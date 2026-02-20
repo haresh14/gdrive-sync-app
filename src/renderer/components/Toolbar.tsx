@@ -10,11 +10,6 @@ const SYNC_MODE_LABELS: Record<SyncMode, string> = {
 interface ToolbarProps {
   syncMode: SyncMode;
   onSyncModeChange: (m: SyncMode) => void;
-  pairCount: number;
-  selectedPairIndex: number;
-  onPairSelect: (index: number) => void;
-  onAddPair: () => void;
-  onRemovePair?: () => void;
   onCompare: () => void;
   onSync: () => void;
   onSave: () => void;
@@ -25,11 +20,6 @@ interface ToolbarProps {
 export default function Toolbar({
   syncMode,
   onSyncModeChange,
-  pairCount,
-  selectedPairIndex,
-  onPairSelect,
-  onAddPair,
-  onRemovePair,
   onCompare,
   onSync,
   onSave,
@@ -38,39 +28,8 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <header className="h-14 flex items-center px-4 bg-[#f5f5f7] dark:bg-zinc-800/95 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-      {/* Left: Pair selector + Compare */}
+      {/* Left: Compare */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1">
-          <select
-            value={selectedPairIndex}
-            onChange={(e) => onPairSelect(Number(e.target.value))}
-            className="px-2 py-1.5 rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-sm"
-          >
-            {Array.from({ length: Math.max(1, pairCount) }, (_, i) => (
-              <option key={i} value={i}>Pair {i + 1}</option>
-            ))}
-          </select>
-          <button
-            onClick={onAddPair}
-            className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400"
-            title="Add folder pair"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-          {pairCount > 1 && onRemovePair && (
-            <button
-              onClick={onRemovePair}
-              className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
-              title="Remove folder pair"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-        </div>
         <button
           onClick={onCompare}
           className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm"

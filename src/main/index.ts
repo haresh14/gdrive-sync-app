@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeTheme } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipc';
 
@@ -34,6 +34,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = 'light';
   setupIpcHandlers(); // Register before window loads
   createWindow();
 

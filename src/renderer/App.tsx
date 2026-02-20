@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Toolbar from './components/Toolbar';
-import PanePathRow from './components/PanePathRow';
+import FolderPairRows from './components/FolderPairRows';
 import FileTreePane from './components/FileTreePane';
 import StatusBar from './components/StatusBar';
 import AccountManager from './components/AccountManager';
@@ -29,20 +29,15 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [showAccounts, setShowAccounts] = useState(false);
 
-  const [selectedPairIndex, setSelectedPairIndex] = useState(0);
-  const [source, setSource] = useState<SyncPath>({ type: 'local', path: '' });
-  const [target, setTarget] = useState<SyncPath>({ type: 'local', path: '' });
-
   const [compareResult, setCompareResult] = useState<{
-    diffs: FileDiff[];
-    sourceCount: number;
-    targetCount: number;
-    source: SyncPath;
-    target: SyncPath;
+    pairResults: Array<{ source: SyncPath; target: SyncPath; diffs: FileDiff[] }>;
+    allDiffs: FileDiff[];
   } | null>(null);
 
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncComplete, setSyncComplete] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; filePath?: string } | null>(null);
 
   const loadAccounts = async () => {
     const list = (await window.electronAPI?.accounts.list()) ?? [];
@@ -53,128 +48,82 @@ export default function App() {
     loadAccounts();
   }, []);
 
-  useEffect(() => {
-    const pairs = config.folderPairs;
-    if (pairs.length === 0) {
-      setSource({ type: 'local', path: '' });
-      setTarget({ type: 'local', path: '' });
-      return;
-    }
-  }, [config.folderPairs.length]);
-
-  useEffect(() => {
-    const pairs = config.folderPairs;
-    if (pairs.length === 0) return;
-    const idx = Math.min(selectedPairIndex, pairs.length - 1);
-    setSource(pairs[idx].source);
-    setTarget(pairs[idx].target);
-  }, [config.folderPairs, selectedPairIndex]);
-
-  const handlePairSelect = (index: number) => {
-    const pairs = config.folderPairs;
-    if (index >= 0 && index < pairs.length) {
-      setSelectedPairIndex(index);
-      setSource(pairs[index].source);
-      setTarget(pairs[index].target);
-      setCompareResult(null);
-    }
-  };
-
   const handleAddPair = () => {
     const newPair = {
       source: { type: 'local' as const, path: '' },
       target: { type: 'local' as const, path: '' },
     };
-    const newIndex = config.folderPairs.length;
     setConfig((c) => ({
       ...c,
       folderPairs: [...c.folderPairs, newPair],
     }));
-    setSelectedPairIndex(newIndex);
-    setSource(newPair.source);
-    setTarget(newPair.target);
     setCompareResult(null);
   };
 
-  const handleRemovePair = () => {
+  const handleRemovePairAt = (index: number) => {
     if (config.folderPairs.length <= 1) return;
-    const newPairs = config.folderPairs.filter((_, i) => i !== selectedPairIndex);
-    const newIndex = Math.min(selectedPairIndex, newPairs.length - 1);
+    const newPairs = config.folderPairs.filter((_, i) => i !== index);
     setConfig((c) => ({ ...c, folderPairs: newPairs }));
-    setSelectedPairIndex(newIndex);
-    setSource(newPairs[newIndex].source);
-    setTarget(newPairs[newIndex].target);
     setCompareResult(null);
   };
 
-  const updatePairPaths = (s: SyncPath, t: SyncPath) => {
-    setSource(s);
-    setTarget(t);
+  const handleUpdatePair = (index: number, s: SyncPath, t: SyncPath) => {
     setConfig((c) => {
       const pairs = [...c.folderPairs];
-      if (pairs.length === 0) {
-        return { ...c, folderPairs: [{ source: s, target: t }] };
-      }
-      const idx = Math.min(selectedPairIndex, pairs.length - 1);
-      pairs[idx] = { ...pairs[idx], source: s, target: t };
+      if (pairs.length === 0) return { ...c, folderPairs: [{ source: s, target: t }] };
+      if (index >= pairs.length) return c;
+      pairs[index] = { source: s, target: t };
       return { ...c, folderPairs: pairs };
     });
   };
 
-  const handleCompare = async () => {
-    const valid =
-      (source.type === 'local' ? source.path : source.accountId) &&
-      (target.type === 'local' ? target.path : target.accountId);
-    if (!valid) {
-      setStatus('Select source and target folders');
-      return;
+  const handleCompare = async (): Promise<boolean> => {
+    const pairs = config.folderPairs.length ? config.folderPairs : [];
+    const validPairs = pairs.filter(
+      (p) =>
+        (p.source.type === 'local' ? p.source.path : p.source.accountId) &&
+        (p.target.type === 'local' ? p.target.path : p.target.accountId)
+    );
+    if (validPairs.length === 0) {
+      setStatus('Add at least one folder pair with source and target');
+      return false;
     }
     setStatus('Comparing...');
     try {
-      const result = await window.electronAPI?.sync.compare(
-        source,
-        target,
-        config.syncMode
-      );
-      if (result) {
-        setCompareResult({ ...result, source, target });
-        setConfig((c) => ({
-          ...c,
-          folderPairs: c.folderPairs.length
-            ? [{ source, target, ...c.folderPairs[0] }]
-            : [{ source, target }],
-        }));
-        setStatus(`Found ${result.diffs.length} differences`);
+      const pairResults: Array<{ source: SyncPath; target: SyncPath; diffs: FileDiff[] }> = [];
+      for (const pair of validPairs) {
+        const result = await window.electronAPI?.sync.compare(
+          pair.source,
+          pair.target,
+          config.syncMode
+        );
+        if (result) {
+          pairResults.push({ source: pair.source, target: pair.target, diffs: result.diffs });
+        }
       }
+      if (pairResults.length > 0) {
+        const allDiffs: FileDiff[] = [];
+        pairResults.forEach((pr, i) => {
+          const prefix = pairResults.length > 1 ? `Pair ${i + 1}/` : '';
+          for (const d of pr.diffs) {
+            allDiffs.push({ ...d, path: prefix + d.path });
+          }
+        });
+        setCompareResult({ pairResults, allDiffs });
+        setStatus(`Found ${allDiffs.length} differences across ${pairResults.length} pair(s)`);
+        return true;
+      }
+      return false;
     } catch (e) {
       setStatus(`Compare failed: ${(e as Error).message}`);
+      return false;
     }
   };
 
   const handleSyncClick = async () => {
     if (!compareResult) {
-      const valid =
-        (source.type === 'local' ? source.path : source.accountId) &&
-        (target.type === 'local' ? target.path : target.accountId);
-      if (!valid) {
-        setStatus('Select source and target folders');
-        return;
-      }
-      setStatus('Comparing...');
-      try {
-        const result = await window.electronAPI?.sync.compare(source, target, config.syncMode);
-        if (result) {
-          setCompareResult({ ...result, source, target });
-          setConfig((c) => ({
-            ...c,
-            folderPairs: c.folderPairs.length ? [{ source, target }] : [{ source, target }],
-          }));
-          setStatus(`Found ${result.diffs.length} differences`);
-          setShowSyncConfirm(true);
-        }
-      } catch (e) {
-        setStatus(`Compare failed: ${(e as Error).message}`);
-      }
+      const ok = await handleCompare();
+      if (ok) setShowSyncConfirm(true);
       return;
     }
     setShowSyncConfirm(true);
@@ -182,39 +131,58 @@ export default function App() {
 
   const handleSyncConfirm = async () => {
     if (!compareResult) return;
+    const totalDiffs = compareResult.allDiffs.length;
     setSyncing(true);
+    setSyncComplete(false);
+    setSyncProgress({ done: 0, total: totalDiffs, filePath: '' });
     setStatus('Syncing...');
-    const unsub = window.electronAPI?.sync.onProgress(({ done, total }) => {
-      setStatus(`Syncing ${done}/${total}...`);
+    let completedBeforeCurrent = 0;
+    const unsub = window.electronAPI?.sync.onProgress(({ done, filePath }) => {
+      const overallDone = completedBeforeCurrent + done;
+      setSyncProgress((p) => (p ? { ...p, done: overallDone, total: p.total, filePath } : { done: overallDone, total: totalDiffs, filePath }));
+      setStatus(`Syncing ${overallDone}/${totalDiffs}...`);
     });
     try {
-      const result = await window.electronAPI?.sync.run(
-        compareResult.source,
-        compareResult.target,
-        compareResult.diffs,
-        config.syncMode
-      );
-      setShowSyncConfirm(false);
-      if (result?.errors.length) {
-        setStatus(`Sync done with ${result.errors.length} errors`);
-      } else {
-        setStatus(`Synced ${result?.done ?? 0} items`);
+      let totalDone = 0;
+      for (const pr of compareResult.pairResults) {
+        if (pr.diffs.length === 0) continue;
+        const result = await window.electronAPI?.sync.run(
+          pr.source,
+          pr.target,
+          pr.diffs,
+          config.syncMode
+        );
+        const pairDone = result?.done ?? pr.diffs.length;
+        totalDone += pairDone;
+        completedBeforeCurrent += pairDone;
       }
+      setSyncProgress((p) => (p ? { ...p, done: totalDone, total: p.total } : { done: totalDone, total: totalDiffs }));
+      setSyncing(false);
+      setSyncComplete(true);
+      setStatus(`Synced ${totalDone} items`);
       setCompareResult(null);
     } catch (e) {
       setStatus(`Sync failed: ${(e as Error).message}`);
+      setShowSyncConfirm(false);
+      setSyncing(false);
+      setSyncComplete(false);
     } finally {
       unsub?.();
-      setSyncing(false);
     }
   };
 
-  const addCount = compareResult?.diffs.filter(
+  const handleCloseSyncComplete = () => {
+    setShowSyncConfirm(false);
+    setSyncComplete(false);
+    setSyncProgress(null);
+  };
+
+  const addCount = compareResult?.allDiffs.filter(
     (d) => d.action === 'create' || d.action === 'update'
   ).length ?? 0;
-  const deleteCount = compareResult?.diffs.filter((d) => d.action === 'delete').length ?? 0;
+  const deleteCount = compareResult?.allDiffs.filter((d) => d.action === 'delete').length ?? 0;
   const totalBytes =
-    compareResult?.diffs.reduce(
+    compareResult?.allDiffs.reduce(
       (s, d) => s + (d.sourceSize ?? d.targetSize ?? 0),
       0
     ) ?? 0;
@@ -224,22 +192,11 @@ export default function App() {
       <Toolbar
         syncMode={config.syncMode}
         onSyncModeChange={(syncMode) => setConfig((c) => ({ ...c, syncMode }))}
-        pairCount={Math.max(1, config.folderPairs.length)}
-        selectedPairIndex={selectedPairIndex}
-        onPairSelect={handlePairSelect}
-        onAddPair={handleAddPair}
-        onRemovePair={config.folderPairs.length > 1 ? handleRemovePair : undefined}
         onCompare={handleCompare}
         onSync={handleSyncClick}
         onSave={async () => {
-          const pairs = config.folderPairs.length
-            ? config.folderPairs.map((p, i) =>
-                i === selectedPairIndex ? { source, target } : p
-              )
-            : [{ source, target }];
-          const cfg = { ...config, folderPairs: pairs };
           try {
-            const p = await window.electronAPI?.settings.save(cfg);
+            const p = await window.electronAPI?.settings.save(config);
             setStatus(`Saved: ${p}`);
           } catch (e) {
             setStatus(`Error: ${(e as Error).message}`);
@@ -251,11 +208,7 @@ export default function App() {
           try {
             const loaded = await window.electronAPI?.settings.load(fp);
             setConfig(loaded);
-            if (loaded.folderPairs.length > 0) {
-              setSelectedPairIndex(0);
-              setSource(loaded.folderPairs[0].source);
-              setTarget(loaded.folderPairs[0].target);
-            }
+            setCompareResult(null);
             setStatus(`Loaded: ${loaded.name}`);
           } catch (e) {
             setStatus(`Error: ${(e as Error).message}`);
@@ -264,29 +217,29 @@ export default function App() {
         onAccounts={() => setShowAccounts(true)}
       />
 
-      <div className="flex-1 flex min-h-0">
-        {/* Left pane */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900/50">
-          <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-            <PanePathRow value={source} onChange={(p) => updatePairPaths(p, target)} accounts={accounts} />
+      <div className="flex-1 flex flex-col min-h-0">
+        <FolderPairRows
+          pairs={config.folderPairs.length ? config.folderPairs : [{ source: { type: 'local', path: '' }, target: { type: 'local', path: '' } }]}
+          accounts={accounts}
+          onAdd={handleAddPair}
+          onRemoveAt={handleRemovePairAt}
+          onUpdatePair={handleUpdatePair}
+        />
+        <div className="flex-1 flex min-h-0 border-t border-zinc-200 bg-white overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0 border-r border-zinc-200">
+            <FileTreePane
+              diffs={compareResult?.allDiffs.filter((d) => d.action !== 'delete') ?? []}
+              side="left"
+              emptyMessage="Select folders and click Compare"
+            />
           </div>
-          <FileTreePane
-            diffs={compareResult?.diffs.filter((d) => d.action !== 'delete') ?? []}
-            side="left"
-            emptyMessage="Select folder and click Compare"
-          />
-        </div>
-
-        {/* Right pane */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900/50">
-          <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-            <PanePathRow value={target} onChange={(p) => updatePairPaths(source, p)} accounts={accounts} />
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
+            <FileTreePane
+              diffs={compareResult?.allDiffs ?? []}
+              side="right"
+              emptyMessage="Select folders and click Compare"
+            />
           </div>
-          <FileTreePane
-            diffs={compareResult?.diffs ?? []}
-            side="right"
-            emptyMessage="Select folder and click Compare"
-          />
         </div>
       </div>
 
@@ -305,15 +258,18 @@ export default function App() {
         />
       )}
 
-      {showSyncConfirm && compareResult && (
+      {(showSyncConfirm || syncing || syncComplete) && (
         <SyncConfirmModal
           syncMode={config.syncMode}
           addCount={addCount}
           deleteCount={deleteCount}
           sizeStr={formatSize(totalBytes)}
           onStart={handleSyncConfirm}
-          onCancel={() => setShowSyncConfirm(false)}
+          onCancel={() => !syncing && handleCloseSyncComplete()}
           syncing={syncing}
+          syncComplete={syncComplete}
+          syncProgress={syncProgress ?? undefined}
+          onCloseComplete={handleCloseSyncComplete}
         />
       )}
     </div>

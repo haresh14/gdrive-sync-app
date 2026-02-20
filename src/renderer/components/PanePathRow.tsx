@@ -6,9 +6,10 @@ interface Props {
   value: SyncPath;
   onChange: (p: SyncPath) => void;
   accounts: GoogleAccount[];
+  compact?: boolean;
 }
 
-export default function PanePathRow({ value, onChange, accounts }: Props) {
+export default function PanePathRow({ value, onChange, accounts, compact = false }: Props) {
   const [showDriveBrowser, setShowDriveBrowser] = useState(false);
 
   const handleLocalBrowse = async () => {
@@ -23,9 +24,12 @@ export default function PanePathRow({ value, onChange, accounts }: Props) {
     setShowDriveBrowser(false);
   };
 
+  const pad = compact ? 'py-1 px-1.5 text-xs' : 'py-1.5 px-2 text-sm';
+  const inputPad = compact ? 'py-1 px-2 text-xs' : 'py-1.5 px-2 text-sm';
+
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-zinc-500 dark:text-zinc-400">Drag &amp; drop</span>
+    <div className={`flex flex-col ${compact ? 'gap-0.5' : 'gap-1'}`}>
+      <span className={`text-zinc-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>Drag &amp; drop</span>
       <div className="flex gap-1 items-center">
         <select
           value={value.type}
@@ -34,7 +38,7 @@ export default function PanePathRow({ value, onChange, accounts }: Props) {
             if (t === 'local') onChange({ type: 'local', path: '' });
             else onChange({ type: 'drive', accountId: accounts[0]?.id ?? '', folderId: 'root', folderName: 'My Drive' });
           }}
-          className="shrink-0 w-24 px-2 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+          className={`shrink-0 w-20 rounded border border-zinc-300 bg-white ${pad}`}
         >
           <option value="local">Local</option>
           <option value="drive">Drive</option>
@@ -46,11 +50,11 @@ export default function PanePathRow({ value, onChange, accounts }: Props) {
               value={value.type === 'local' ? value.path : ''}
               onChange={(e) => onChange({ type: 'local', path: e.target.value })}
               placeholder="/path/to/folder"
-              className="flex-1 min-w-0 px-2 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-200 text-sm"
+              className={`flex-1 min-w-0 rounded border border-zinc-300 bg-white text-zinc-900 ${inputPad}`}
             />
             <button
               onClick={handleLocalBrowse}
-              className="px-3 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-sm shrink-0"
+              className={`rounded border border-zinc-300 hover:bg-zinc-100 shrink-0 ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'}`}
             >
               Browse
             </button>
@@ -65,7 +69,7 @@ export default function PanePathRow({ value, onChange, accounts }: Props) {
                 folderId: 'root',
                 folderName: 'My Drive',
               })}
-              className="shrink-0 w-40 px-2 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+              className={`shrink-0 rounded border border-zinc-300 bg-white ${compact ? 'w-32' : 'w-40'} ${pad}`}
             >
               <option value="">Account</option>
               {accounts.map((a) => (
@@ -77,12 +81,12 @@ export default function PanePathRow({ value, onChange, accounts }: Props) {
               value={value.folderName ?? ''}
               readOnly
               placeholder="Drive folder"
-              className="flex-1 min-w-0 px-2 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 text-sm"
+              className={`flex-1 min-w-0 rounded border border-zinc-300 bg-zinc-50 text-zinc-600 ${inputPad}`}
             />
             <button
               onClick={() => value.accountId && setShowDriveBrowser(true)}
               disabled={!value.accountId}
-              className="px-3 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 text-sm shrink-0"
+              className={`rounded border border-zinc-300 hover:bg-zinc-100 disabled:opacity-50 shrink-0 ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'}`}
             >
               Browse
             </button>
