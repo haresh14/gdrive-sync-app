@@ -49,4 +49,5 @@ export interface FileDiff {
   targetSize?: number;
   sourceModified?: string;
   targetModified?: string;
+  isFolder?: boolean;
 }

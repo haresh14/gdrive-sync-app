@@ -116,47 +116,58 @@ export async function uploadFile(
   content: Buffer
 ): Promise<DriveFile> {
   const filename = localPath.split(/[/\\]/).pop() || 'file';
-  const boundary = '-------' + Date.now();
-  const body = [
+  const boundary = '-------' + Date.now().toString(36) + Math.random().toString(36);
+
+  const token = await getValidAccessToken(accountId);
+  if (!token) throw new Error('Not authenticated');
+
+  const metadata = JSON.stringify({
+    name: filename,
+    parents: [parentId],
+  });
+
+  const metadataPart = [
     `--${boundary}`,
-    'Content-Disposition: form-data; name="metadata"; charset=UTF-8',
     'Content-Type: application/json; charset=UTF-8',
     '',
-    JSON.stringify({
-      name: filename,
-      parents: [parentId],
-    }),
+    metadata,
+  ].join('\r\n');
+
+  const filePart = [
+    '',
     `--${boundary}`,
-    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
     'Content-Type: application/octet-stream',
     '',
     '',
   ].join('\r\n');
 
-  const token = await getValidAccessToken(accountId);
-  if (!token) throw new Error('Not authenticated');
+  const ending = `\r\n--${boundary}--`;
 
   const payload = Buffer.concat([
-    Buffer.from(body, 'utf8'),
+    Buffer.from(metadataPart, 'utf8'),
+    Buffer.from(filePart, 'utf8'),
     content,
-    Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'),
+    Buffer.from(ending, 'utf8'),
   ]);
 
-  const res = await fetch(`${DRIVE_API}/files?uploadType=multipart`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': `multipart/related; boundary=${boundary}`,
-      'Content-Length': String(payload.length),
-    },
-    body: payload,
-  });
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': String(payload.length),
+      },
+      body: payload,
+    }
+  );
 
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as {
       error?: { message?: string };
     };
-    throw new Error(err.error?.message || `Drive API: ${res.status}`);
+    throw new Error(err.error?.message || `Upload failed: ${res.status}`);
   }
   return (await res.json()) as DriveFile;
 }

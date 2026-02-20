@@ -14,8 +14,8 @@ export interface CompareResult {
 }
 
 /** Recursively list local files with relative paths */
-async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, { size: number; mtime: string }>> {
-  const result = new Map<string, { size: number; mtime: string }>();
+async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, { size: number; mtime: string; isFolder?: boolean }>> {
+  const result = new Map<string, { size: number; mtime: string; isFolder?: boolean }>();
   let names: string[];
   try {
     names = await fs.readdir(dirPath);
@@ -34,6 +34,7 @@ async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, {
       continue;
     }
     if (stat.isDirectory()) {
+      result.set(rel, { size: 0, mtime: stat.mtime.toISOString(), isFolder: true });
       const sub = await listLocalFiles(full, rel);
       for (const [p, meta] of sub) result.set(p, meta);
     } else {
@@ -51,8 +52,8 @@ async function listDriveFiles(
   accountId: string,
   folderId: string,
   base = ''
-): Promise<Map<string, { size: number; mtime: string; id: string }>> {
-  const result = new Map<string, { size: number; mtime: string; id: string }>();
+): Promise<Map<string, { size: number; mtime: string; id: string; isFolder?: boolean }>> {
+  const result = new Map<string, { size: number; mtime: string; id: string; isFolder?: boolean }>();
   let files: { id: string; name: string; mimeType: string; size?: number; modifiedTime?: string }[];
   try {
     files = await drive.listFiles(accountId, folderId);
@@ -65,6 +66,7 @@ async function listDriveFiles(
     const rel = base ? `${base}/${f.name}` : f.name;
 
     if (f.mimeType === folderMime) {
+      result.set(rel, { size: 0, mtime: f.modifiedTime ?? '', id: f.id, isFolder: true });
       const sub = await listDriveFiles(accountId, f.id, rel);
       for (const [p, meta] of sub) result.set(p, meta);
     } else {
@@ -80,7 +82,7 @@ async function listDriveFiles(
 
 /** Get file listing for a path */
 async function getFileMap(p: SyncPath): Promise<{
-  files: Map<string, { size: number; mtime: string; id?: string }>;
+  files: Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>;
   type: 'local' | 'drive';
   accountId?: string;
   folderId?: string;
@@ -88,12 +90,12 @@ async function getFileMap(p: SyncPath): Promise<{
 }> {
   if (p.type === 'local') {
     const files = await listLocalFiles(p.path);
-    const map = new Map<string, { size: number; mtime: string; id?: string }>();
+    const map = new Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>();
     for (const [k, v] of files) map.set(k, v);
     return { files: map, type: 'local', basePath: p.path };
   } else {
     const files = await listDriveFiles(p.accountId, p.folderId);
-    const map = new Map<string, { size: number; mtime: string; id?: string }>();
+    const map = new Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>();
     for (const [k, v] of files) map.set(k, { ...v, id: v.id });
     return {
       files: map,
@@ -124,16 +126,16 @@ export async function compare(
 
     if (!s && t) {
       // only on target
-      if (syncMode === 'mirror') diffs.push({ path: rel, action: 'delete' });
-      else if (syncMode === 'one-way-rl')
+      if (syncMode === 'mirror') diffs.push({ path: rel, action: 'delete', isFolder: t.isFolder });
+      else if (syncMode === 'one-way-rl' && !t.isFolder)
         diffs.push({ path: rel, action: 'create', targetSize: t.size, targetModified: t.mtime });
     } else if (s && !t) {
-      // only on source
-      if (syncMode !== 'one-way-rl')
+      // only on source (don't create folder entries, they're created implicitly)
+      if (syncMode !== 'one-way-rl' && !s.isFolder)
         diffs.push({ path: rel, action: 'create', sourceSize: s.size, sourceModified: s.mtime });
     } else if (s && t) {
-      // both - check if different
-      if (s.size !== t.size || s.mtime !== t.mtime) {
+      // both - check if different (skip folders for update comparison)
+      if (!s.isFolder && !t.isFolder && (s.size !== t.size || s.mtime !== t.mtime)) {
         const srcNewer = !s.mtime || !t.mtime || s.mtime > t.mtime;
         if (syncMode === 'two-way') {
           diffs.push({
@@ -183,15 +185,46 @@ export async function sync(
 ): Promise<{ done: number; errors: string[]; cancelled: boolean }> {
   const errors: string[] = [];
   let done = 0;
-  const total = diffs.length;
 
-  for (const d of diffs) {
+  // Sort diffs: folder deletions first (shorter paths first for parent-before-child),
+  // then file deletions, then creates/updates
+  const sortedDiffs = [...diffs].sort((a, b) => {
+    const aIsDelete = a.action === 'delete';
+    const bIsDelete = b.action === 'delete';
+    if (aIsDelete && !bIsDelete) return -1;
+    if (!aIsDelete && bIsDelete) return 1;
+    if (aIsDelete && bIsDelete) {
+      const aIsFolder = a.isFolder ?? false;
+      const bIsFolder = b.isFolder ?? false;
+      if (aIsFolder && !bIsFolder) return -1;
+      if (!aIsFolder && bIsFolder) return 1;
+      // For folders, delete shorter paths first (parents before children)
+      if (aIsFolder && bIsFolder) return a.path.length - b.path.length;
+    }
+    return 0;
+  });
+
+  // Track deleted folders to skip children
+  const deletedFolders: string[] = [];
+  const total = sortedDiffs.length;
+
+  for (const d of sortedDiffs) {
     if (control?.isCancelled()) {
       return { done, errors, cancelled: true };
     }
     if (control?.isPaused()) {
       const wasCancelled = await waitWhilePaused(control);
       if (wasCancelled) return { done, errors, cancelled: true };
+    }
+
+    // Skip items under already-deleted folders
+    const isUnderDeletedFolder = deletedFolders.some(
+      (folder) => d.path.startsWith(folder + '/')
+    );
+    if (isUnderDeletedFolder && d.action === 'delete') {
+      done++;
+      onProgress?.(done, total, d.path);
+      continue;
     }
 
     try {
@@ -214,7 +247,8 @@ export async function sync(
       } else if (d.action === 'update' && syncMode === 'mirror') {
         await copyFile(source, target, d.path);
       } else if (d.action === 'delete' && syncMode === 'mirror') {
-        await deleteFile(target, d.path);
+        await deleteFile(target, d.path, d.isFolder);
+        if (d.isFolder) deletedFolders.push(d.path);
       }
     } catch (e) {
       errors.push(`${d.path}: ${(e as Error).message}`);
@@ -257,10 +291,14 @@ async function copyFile(
   }
 }
 
-async function deleteFile(p: SyncPath, relPath: string): Promise<void> {
+async function deleteFile(p: SyncPath, relPath: string, isFolder?: boolean): Promise<void> {
   if (p.type === 'local') {
     const full = path.join(p.path, relPath);
-    await fs.unlink(full);
+    if (isFolder) {
+      await fs.rm(full, { recursive: true, force: true });
+    } else {
+      await fs.unlink(full);
+    }
   } else {
     const fileId = await getDriveFileId(p.accountId!, p.folderId, relPath);
     if (fileId) await drive.deleteFile(p.accountId!, fileId);
@@ -293,7 +331,8 @@ async function ensureParentFolder(
   rootId: string,
   dirPath: string
 ): Promise<string> {
-  const parts = dirPath.split(/[/\\]/).filter(Boolean);
+  const parts = dirPath.split(/[/\\]/).filter((p) => p && p !== '.');
+  if (parts.length === 0) return rootId;
   let currentId = rootId;
   for (const part of parts) {
     const files = await drive.listFiles(accountId, currentId);
