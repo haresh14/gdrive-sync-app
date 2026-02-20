@@ -37,6 +37,25 @@ export async function saveConfig(
   return filePath;
 }
 
+export async function saveConfigAs(
+  config: SyncConfig,
+  filePath: string
+): Promise<string> {
+  const dir = path.dirname(filePath);
+  const baseName = path.basename(filePath, '.gdsync.json');
+
+  const toSave = {
+    ...config,
+    name: baseName,
+    updatedAt: new Date().toISOString(),
+  };
+  if (!toSave.createdAt) toSave.createdAt = toSave.updatedAt;
+
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(toSave, null, 2), 'utf-8');
+  return filePath;
+}
+
 export async function loadConfig(filePath: string): Promise<SyncConfig> {
   const data = await fs.readFile(filePath, 'utf-8');
   const parsed = JSON.parse(data);

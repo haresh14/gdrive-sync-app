@@ -50,6 +50,12 @@ export default function App() {
     loadAccounts();
   }, []);
 
+  const handleNewSync = () => {
+    setConfig(defaultConfig);
+    setCompareResult(null);
+    setStatus('New sync configuration started');
+  };
+
   const handleAddPair = () => {
     const newPair = {
       source: { type: 'local' as const, path: '' },
@@ -226,11 +232,18 @@ export default function App() {
       <Toolbar
         syncMode={config.syncMode}
         onSyncModeChange={(syncMode) => setConfig((c) => ({ ...c, syncMode }))}
+        onNew={handleNewSync}
         onCompare={handleCompare}
         onSync={handleSyncClick}
         onSave={async () => {
           try {
-            const p = await window.electronAPI?.settings.save(config);
+            const defaultName = config.name !== 'Untitled' 
+              ? config.name.replace(/[^a-zA-Z0-9-_]/g, '_') + '.gdsync.json'
+              : 'sync-config.gdsync.json';
+            const fp = await window.electronAPI?.dialog.saveConfigFile(defaultName);
+            if (!fp) return;
+            const p = await window.electronAPI?.settings.saveAs(config, fp);
+            setConfig((c) => ({ ...c, name: p?.split('/').pop()?.replace('.gdsync.json', '') || c.name }));
             setStatus(`Saved: ${p}`);
           } catch (e) {
             setStatus(`Error: ${(e as Error).message}`);

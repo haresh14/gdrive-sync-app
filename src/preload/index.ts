@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settings: {
     getDefaultDir: () => ipcRenderer.invoke('settings:getDefaultDir'),
     save: (config: object) => ipcRenderer.invoke('settings:save', config),
+    saveAs: (config: object, filePath: string) => ipcRenderer.invoke('settings:saveAs', config, filePath),
     load: (filePath: string) => ipcRenderer.invoke('settings:load', filePath),
     list: () => ipcRenderer.invoke('settings:list'),
   },
@@ -15,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dialog: {
     selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
     selectConfigFile: () => ipcRenderer.invoke('dialog:selectConfigFile'),
+    saveConfigFile: (defaultName?: string) => ipcRenderer.invoke('dialog:saveConfigFile', defaultName),
   },
 
   // Accounts

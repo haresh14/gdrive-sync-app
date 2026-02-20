@@ -10,6 +10,7 @@ const SYNC_MODE_LABELS: Record<SyncMode, string> = {
 interface ToolbarProps {
   syncMode: SyncMode;
   onSyncModeChange: (m: SyncMode) => void;
+  onNew: () => void;
   onCompare: () => void;
   onSync: () => void;
   onSave: () => void;
@@ -20,6 +21,7 @@ interface ToolbarProps {
 export default function Toolbar({
   syncMode,
   onSyncModeChange,
+  onNew,
   onCompare,
   onSync,
   onSave,
@@ -28,8 +30,17 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <header className="h-14 flex items-center px-4 bg-[#f5f5f7] dark:bg-zinc-800/95 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-      {/* Left: Compare */}
+      {/* Left: New Sync, Compare */}
       <div className="flex items-center gap-3">
+        <button
+          onClick={onNew}
+          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          New Sync
+        </button>
         <button
           onClick={onCompare}
           className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm"
@@ -71,7 +82,7 @@ export default function Toolbar({
         </select>
         <button onClick={onSave} className="p-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="Save Config">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
           </svg>
         </button>
         <button onClick={onLoad} className="p-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="Load Config">

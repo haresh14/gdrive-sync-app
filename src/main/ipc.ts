@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
   getDefaultSettingsDir,
   saveConfig,
+  saveConfigAs,
   loadConfig,
   listConfigs,
 } from './services/settings';
@@ -27,6 +28,10 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle('settings:save', async (_, config: SyncConfig) => {
     return saveConfig(config);
+  });
+
+  ipcMain.handle('settings:saveAs', async (_, config: SyncConfig, filePath: string) => {
+    return saveConfigAs(config, filePath);
   });
 
   ipcMain.handle('settings:load', async (_, filePath: string) => {
@@ -54,6 +59,17 @@ export function setupIpcHandlers(): void {
       ],
     });
     return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('dialog:saveConfigFile', async (_, defaultName?: string) => {
+    const dir = await getDefaultSettingsDir();
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(dir, defaultName || 'sync-config.gdsync.json'),
+      filters: [
+        { name: 'GDrive Sync Config', extensions: ['gdsync.json'] },
+      ],
+    });
+    return result.canceled ? null : result.filePath;
   });
 
   // Google accounts

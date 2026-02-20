@@ -3,12 +3,14 @@ export interface ElectronAPI {
   settings: {
     getDefaultDir: () => Promise<string>;
     save: (config: object) => Promise<string>;
+    saveAs: (config: object, filePath: string) => Promise<string>;
     load: (filePath: string) => Promise<import('../../shared/types').SyncConfig>;
     list: () => Promise<string[]>;
   };
   dialog: {
     selectFolder: () => Promise<string | null>;
     selectConfigFile: () => Promise<string | null>;
+    saveConfigFile: (defaultName?: string) => Promise<string | null>;
   };
   accounts: {
     list: () => Promise<import('../../shared/types').GoogleAccount[]>;
