@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { SyncPath, GoogleAccount } from '../../shared/types';
+import DriveFolderBrowser from './DriveFolderBrowser';
 
 interface Props {
   value: SyncPath;
@@ -10,10 +11,23 @@ interface Props {
 
 export default function PathPicker({ value, onChange, accounts, label }: Props) {
   const [type, setType] = useState<'local' | 'drive'>(value.type);
+  const [showDriveBrowser, setShowDriveBrowser] = useState(false);
 
   const handleLocalBrowse = async () => {
     const path = await window.electronAPI?.dialog.selectFolder();
     if (path) onChange({ type: 'local', path });
+  };
+
+  const handleDriveSelect = (folderId: string, folderName: string) => {
+    if (value.type === 'drive') {
+      onChange({
+        type: 'drive',
+        accountId: value.accountId,
+        folderId,
+        folderName,
+      });
+    }
+    setShowDriveBrowser(false);
   };
 
   return (
@@ -78,10 +92,30 @@ export default function PathPicker({ value, onChange, accounts, label }: Props) 
             value={value.type === 'drive' ? value.folderName ?? '' : ''}
             placeholder="Drive folder"
             readOnly
-            className="flex-1 px-3 py-2 rounded bg-zinc-800/50 border border-zinc-600 text-zinc-400 text-sm cursor-not-allowed"
+            className="flex-1 px-3 py-2 rounded bg-zinc-800/50 border border-zinc-600 text-zinc-400 text-sm"
           />
+          <button
+            onClick={() =>
+              value.type === 'drive' &&
+              value.accountId &&
+              setShowDriveBrowser(true)
+            }
+            disabled={!(value.type === 'drive' && value.accountId)}
+            className="px-3 py-2 rounded bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-300 text-sm"
+          >
+            Browse
+          </button>
         </div>
       )}
+      {showDriveBrowser &&
+        value.type === 'drive' &&
+        value.accountId && (
+          <DriveFolderBrowser
+            accountId={value.accountId}
+            onSelect={handleDriveSelect}
+            onClose={() => setShowDriveBrowser(false)}
+          />
+        )}
     </div>
   );
 }

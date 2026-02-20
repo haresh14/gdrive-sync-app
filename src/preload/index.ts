@@ -23,4 +23,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     add: (accountId: string) => ipcRenderer.invoke('accounts:add', accountId),
     remove: (accountId: string) => ipcRenderer.invoke('accounts:remove', accountId),
   },
+
+  // Google Drive
+  drive: {
+    listFiles: (accountId: string, folderId?: string) =>
+      ipcRenderer.invoke('drive:listFiles', accountId, folderId),
+    getFile: (accountId: string, fileId: string) =>
+      ipcRenderer.invoke('drive:getFile', accountId, fileId),
+  },
+
+  // Sync
+  sync: {
+    compare: (source: object, target: object, syncMode: string) =>
+      ipcRenderer.invoke('sync:compare', source, target, syncMode),
+    run: (source: object, target: object, diffs: object[], syncMode: string) =>
+      ipcRenderer.invoke('sync:run', source, target, diffs, syncMode),
+    onProgress: (cb: (data: { done: number; total: number; filePath: string }) => void) => {
+      const sub = (_: unknown, data: { done: number; total: number; filePath: string }) => cb(data);
+      ipcRenderer.on('sync:progress', sub);
+      return () => ipcRenderer.removeListener('sync:progress', sub);
+    },
+  },
 });

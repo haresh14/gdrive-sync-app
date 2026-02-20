@@ -14,7 +14,7 @@ export default function Toolbar({
   onAccounts,
 }: ToolbarProps) {
   return (
-    <header className="h-12 flex items-center gap-2 px-4 bg-zinc-800/80 border-b border-zinc-700 shrink-0">
+    <header className="h-12 flex items-center gap-2 px-4 bg-zinc-800/80 border-b border-zinc-700 shrink-0 ps-24">
       <button
         onClick={onCompare}
         className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium"

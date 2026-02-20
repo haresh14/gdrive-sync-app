@@ -291,6 +291,68 @@ export function getTokens(accountId: string): TokenData | null {
   return acc?.tokens ?? null;
 }
 
+/** Get a valid access token, refreshing if expired. Returns null if no tokens. */
+export async function getValidAccessToken(
+  accountId: string
+): Promise<string | null> {
+  const accounts = store.get('accounts', []);
+  const acc = accounts.find((a) => a.id === accountId);
+  if (!acc?.tokens) return null;
+
+  const tokens = acc.tokens;
+  const bufferMs = 5 * 60 * 1000; // refresh 5 min before expiry
+  if (Date.now() < tokens.expiry_date - bufferMs) {
+    return tokens.access_token;
+  }
+
+  if (!tokens.refresh_token || !CLIENT_SECRET) return tokens.access_token;
+
+  try {
+    const newTokens = await refreshTokens(tokens.refresh_token);
+    const updated: StoredAccount = {
+      ...acc,
+      tokens: {
+        ...newTokens,
+        refresh_token: newTokens.refresh_token ?? tokens.refresh_token,
+        expiry_date:
+          Date.now() + (newTokens.expires_in || 3600) * 1000,
+      },
+    };
+    saveAccount(updated);
+    return updated.tokens.access_token;
+  } catch {
+    return tokens.access_token; // fallback to possibly expired
+  }
+}
+
+async function refreshTokens(refreshToken: string): Promise<
+  TokenData & { expires_in?: number }
+> {
+  const body = new URLSearchParams({
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+  });
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      error_description?: string;
+    };
+    throw new Error(
+      err.error_description || err.error || `HTTP ${res.status}`
+    );
+  }
+  return (await res.json()) as TokenData & { expires_in?: number };
+}
+
 function saveAccount(account: StoredAccount): void {
   const accounts = store.get('accounts', []);
   const idx = accounts.findIndex((a) => a.id === account.id);

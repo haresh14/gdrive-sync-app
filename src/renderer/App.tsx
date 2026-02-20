@@ -4,7 +4,8 @@ import FolderPairs from './components/FolderPairs';
 import SyncModeSelector from './components/SyncModeSelector';
 import StatusBar from './components/StatusBar';
 import AccountManager from './components/AccountManager';
-import type { SyncConfig, SyncPath, GoogleAccount } from '../../shared/types';
+import CompareResult from './components/CompareResult';
+import type { SyncConfig, SyncPath, GoogleAccount, FileDiff } from '../../shared/types';
 
 export type { SyncConfig, SyncPath, GoogleAccount };
 
@@ -20,6 +21,14 @@ export default function App() {
   const [accounts, setAccounts] = useState<GoogleAccount[]>([]);
   const [status, setStatus] = useState('');
   const [showAccounts, setShowAccounts] = useState(false);
+  const [compareResult, setCompareResult] = useState<{
+    diffs: FileDiff[];
+    sourceCount: number;
+    targetCount: number;
+    source: SyncPath;
+    target: SyncPath;
+  } | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const loadAccounts = async () => {
     const list = await window.electronAPI?.accounts.list() ?? [];
@@ -58,12 +67,66 @@ export default function App() {
     }));
   };
 
-  const handleCompare = () => {
-    setStatus('Compare not implemented yet');
+  const handleCompare = async () => {
+    const pair = config.folderPairs.find(
+      (p) =>
+        (p.source.type === 'local' ? p.source.path : p.source.accountId) &&
+        (p.target.type === 'local' ? p.target.path : p.target.accountId)
+    );
+    if (!pair) {
+      setStatus('Add a folder pair with valid source and target');
+      return;
+    }
+    setStatus('Comparing...');
+    try {
+      const result = await window.electronAPI?.sync.compare(
+        pair.source,
+        pair.target,
+        config.syncMode
+      );
+      if (result) {
+        setCompareResult({
+          ...result,
+          source: pair.source,
+          target: pair.target,
+        });
+        setStatus(`Found ${result.diffs.length} differences`);
+      }
+    } catch (e) {
+      setStatus(`Compare failed: ${(e as Error).message}`);
+    }
+  };
+
+  const handleSyncFromCompare = async () => {
+    if (!compareResult) return;
+    setSyncing(true);
+    setStatus('Syncing...');
+    const unsub = window.electronAPI?.sync.onProgress(({ done, total }) => {
+      setStatus(`Syncing ${done}/${total}...`);
+    });
+    try {
+      const result = await window.electronAPI?.sync.run(
+        compareResult.source,
+        compareResult.target,
+        compareResult.diffs,
+        config.syncMode
+      );
+      if (result?.errors.length) {
+        setStatus(`Sync done with ${result.errors.length} errors`);
+      } else {
+        setStatus(`Synced ${result?.done ?? 0} items`);
+      }
+      setCompareResult(null);
+    } catch (e) {
+      setStatus(`Sync failed: ${(e as Error).message}`);
+    } finally {
+      unsub?.();
+      setSyncing(false);
+    }
   };
 
   const handleSync = () => {
-    setStatus('Sync not implemented yet');
+    handleCompare(); // Opens compare result modal; user clicks Sync there
   };
 
   const handleSave = async () => {
@@ -132,6 +195,16 @@ export default function App() {
           accounts={accounts}
           onClose={() => setShowAccounts(false)}
           onRefresh={loadAccounts}
+        />
+      )}
+      {compareResult && (
+        <CompareResult
+          diffs={compareResult.diffs}
+          sourceCount={compareResult.sourceCount}
+          targetCount={compareResult.targetCount}
+          onSync={handleSyncFromCompare}
+          onClose={() => setCompareResult(null)}
+          syncing={syncing}
         />
       )}
     </div>

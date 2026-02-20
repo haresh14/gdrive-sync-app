@@ -15,6 +15,15 @@ export interface ElectronAPI {
     add: (accountId: string) => Promise<{ success: boolean; account?: import('../../shared/types').GoogleAccount; error?: string }>;
     remove: (accountId: string) => Promise<void>;
   };
+  drive: {
+    listFiles: (accountId: string, folderId?: string) => Promise<{ id: string; name: string; mimeType: string; size?: number; modifiedTime?: string }[]>;
+    getFile: (accountId: string, fileId: string) => Promise<{ id: string; name: string; mimeType: string } | null>;
+  };
+  sync: {
+    compare: (source: object, target: object, syncMode: string) => Promise<{ diffs: import('../../shared/types').FileDiff[]; sourceCount: number; targetCount: number }>;
+    run: (source: object, target: object, diffs: object[], syncMode: string) => Promise<{ done: number; errors: string[] }>;
+    onProgress: (cb: (data: { done: number; total: number; filePath: string }) => void) => () => void;
+  };
 }
 
 declare global {

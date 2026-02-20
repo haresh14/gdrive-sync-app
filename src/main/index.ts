@@ -5,8 +5,6 @@ import { setupIpcHandlers } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
-setupIpcHandlers();
-
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 function createWindow() {
@@ -36,6 +34,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  setupIpcHandlers(); // Register before window loads
   createWindow();
 
   app.on('activate', () => {

@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as path from 'path';
 import {
   getDefaultSettingsDir,
@@ -7,6 +7,8 @@ import {
   listConfigs,
 } from './services/settings';
 import { getAccounts, addAccount, removeAccount } from './services/google-auth';
+import * as drive from './services/google-drive';
+import * as syncEngine from './services/sync-engine';
 import type { SyncConfig } from '../shared/types';
 
 export function setupIpcHandlers(): void {
@@ -56,4 +58,30 @@ export function setupIpcHandlers(): void {
   ipcMain.handle('accounts:remove', (_, accountId: string) => {
     removeAccount(accountId);
   });
+
+  // Google Drive
+  ipcMain.handle('drive:listFiles', async (_, accountId: string, folderId?: string) =>
+    drive.listFiles(accountId, folderId || 'root')
+  );
+
+  ipcMain.handle('drive:getFile', async (_, accountId: string, fileId: string) =>
+    drive.getFile(accountId, fileId)
+  );
+
+  // Sync
+  ipcMain.handle(
+    'sync:compare',
+    async (_, source, target, syncMode) =>
+      syncEngine.compare(source, target, syncMode)
+  );
+
+  ipcMain.handle(
+    'sync:run',
+    async (event, source, target, diffs, syncMode) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return syncEngine.sync(source, target, diffs, syncMode, (done, total, filePath) => {
+        win?.webContents.send('sync:progress', { done, total, filePath });
+      });
+    }
+  );
 }
