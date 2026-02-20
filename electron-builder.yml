@@ -1,0 +1,18 @@
+appId: com.flexteam.gdrive-sync
+productName: GDrive Sync
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-main/**/*
+mac:
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+linux:
+  target:
+    - AppImage
+    - deb
