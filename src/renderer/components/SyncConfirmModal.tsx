@@ -22,8 +22,13 @@ interface Props {
   onCancel: () => void;
   syncing?: boolean;
   syncComplete?: boolean;
+  syncCancelled?: boolean;
+  syncPaused?: boolean;
   syncProgress?: SyncProgress;
   onCloseComplete?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+  onCancelSync?: () => void;
 }
 
 function truncatePath(p: string, maxLen = 50): string {
@@ -40,10 +45,15 @@ export default function SyncConfirmModal({
   onCancel,
   syncing = false,
   syncComplete = false,
+  syncCancelled = false,
+  syncPaused = false,
   syncProgress,
   onCloseComplete,
+  onPause,
+  onResume,
+  onCancelSync,
 }: Props) {
-  const showProgress = syncing || syncComplete;
+  const showProgress = syncing || syncComplete || syncCancelled;
   const total = syncProgress?.total ?? 0;
   const done = syncProgress?.done ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -58,12 +68,29 @@ export default function SyncConfirmModal({
             </svg>
           </div>
 
-          {syncComplete ? (
+          {syncCancelled ? (
             <>
-              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+              <h2 className="text-xl font-semibold text-zinc-900">
+                Sync cancelled
+              </h2>
+              <p className="text-sm text-zinc-600">
+                {done} of {total} files synced before cancellation
+              </p>
+              {onCloseComplete && (
+                <button
+                  onClick={onCloseComplete}
+                  className="w-full py-2.5 rounded-lg bg-zinc-600 hover:bg-zinc-500 text-white font-medium text-sm"
+                >
+                  Close
+                </button>
+              )}
+            </>
+          ) : syncComplete ? (
+            <>
+              <h2 className="text-xl font-semibold text-zinc-900">
                 Sync complete
               </h2>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-zinc-600">
                 {done} of {total} files synced
               </p>
               {onCloseComplete && (
@@ -77,29 +104,52 @@ export default function SyncConfirmModal({
             </>
           ) : showProgress ? (
             <>
-              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                Syncing...
+              <h2 className="text-xl font-semibold text-zinc-900">
+                {syncPaused ? 'Sync paused' : 'Syncing...'}
               </h2>
               <div className="w-full space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-600 dark:text-zinc-400">
+                  <span className="text-zinc-600">
                     {done} of {total} files
                   </span>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-200">
+                  <span className="font-medium text-zinc-900">
                     {pct}%
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div className="h-2 rounded-full bg-zinc-200 overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                    className={`h-full rounded-full transition-all duration-300 ${syncPaused ? 'bg-amber-500' : 'bg-emerald-500'}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
                 {syncProgress?.filePath && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate" title={syncProgress.filePath}>
+                  <p className="text-xs text-zinc-500 truncate" title={syncProgress.filePath}>
                     {truncatePath(syncProgress.filePath)}
                   </p>
                 )}
+              </div>
+              <div className="flex gap-3 w-full pt-2">
+                {syncPaused ? (
+                  <button
+                    onClick={onResume}
+                    className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm"
+                  >
+                    Resume
+                  </button>
+                ) : (
+                  <button
+                    onClick={onPause}
+                    className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-white font-medium text-sm"
+                  >
+                    Pause
+                  </button>
+                )}
+                <button
+                  onClick={onCancelSync}
+                  className="flex-1 py-2.5 rounded-lg border border-red-300 hover:bg-red-50 text-red-600 font-medium text-sm"
+                >
+                  Cancel
+                </button>
               </div>
             </>
           ) : (

@@ -37,6 +37,8 @@ export default function App() {
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncComplete, setSyncComplete] = useState(false);
+  const [syncCancelled, setSyncCancelled] = useState(false);
+  const [syncPaused, setSyncPaused] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; filePath?: string } | null>(null);
 
   const loadAccounts = async () => {
@@ -134,9 +136,12 @@ export default function App() {
     const totalDiffs = compareResult.allDiffs.length;
     setSyncing(true);
     setSyncComplete(false);
+    setSyncCancelled(false);
+    setSyncPaused(false);
     setSyncProgress({ done: 0, total: totalDiffs, filePath: '' });
     setStatus('Syncing...');
     let completedBeforeCurrent = 0;
+    let wasCancelled = false;
     const unsub = window.electronAPI?.sync.onProgress(({ done, filePath }) => {
       const overallDone = completedBeforeCurrent + done;
       setSyncProgress((p) => (p ? { ...p, done: overallDone, total: p.total, filePath } : { done: overallDone, total: totalDiffs, filePath }));
@@ -155,25 +160,54 @@ export default function App() {
         const pairDone = result?.done ?? pr.diffs.length;
         totalDone += pairDone;
         completedBeforeCurrent += pairDone;
+        if (result?.cancelled) {
+          wasCancelled = true;
+          break;
+        }
       }
       setSyncProgress((p) => (p ? { ...p, done: totalDone, total: p.total } : { done: totalDone, total: totalDiffs }));
       setSyncing(false);
-      setSyncComplete(true);
-      setStatus(`Synced ${totalDone} items`);
+      setSyncPaused(false);
+      if (wasCancelled) {
+        setSyncCancelled(true);
+        setStatus(`Sync cancelled after ${totalDone} items`);
+      } else {
+        setSyncComplete(true);
+        setStatus(`Synced ${totalDone} items`);
+      }
       setCompareResult(null);
     } catch (e) {
       setStatus(`Sync failed: ${(e as Error).message}`);
       setShowSyncConfirm(false);
       setSyncing(false);
       setSyncComplete(false);
+      setSyncCancelled(false);
     } finally {
       unsub?.();
     }
   };
 
+  const handlePauseSync = () => {
+    window.electronAPI?.sync.pause();
+    setSyncPaused(true);
+    setStatus('Sync paused');
+  };
+
+  const handleResumeSync = () => {
+    window.electronAPI?.sync.resume();
+    setSyncPaused(false);
+    setStatus('Syncing...');
+  };
+
+  const handleCancelSync = () => {
+    window.electronAPI?.sync.cancel();
+  };
+
   const handleCloseSyncComplete = () => {
     setShowSyncConfirm(false);
     setSyncComplete(false);
+    setSyncCancelled(false);
+    setSyncPaused(false);
     setSyncProgress(null);
   };
 
@@ -258,7 +292,7 @@ export default function App() {
         />
       )}
 
-      {(showSyncConfirm || syncing || syncComplete) && (
+      {(showSyncConfirm || syncing || syncComplete || syncCancelled) && (
         <SyncConfirmModal
           syncMode={config.syncMode}
           addCount={addCount}
@@ -268,8 +302,13 @@ export default function App() {
           onCancel={() => !syncing && handleCloseSyncComplete()}
           syncing={syncing}
           syncComplete={syncComplete}
+          syncCancelled={syncCancelled}
+          syncPaused={syncPaused}
           syncProgress={syncProgress ?? undefined}
           onCloseComplete={handleCloseSyncComplete}
+          onPause={handlePauseSync}
+          onResume={handleResumeSync}
+          onCancelSync={handleCancelSync}
         />
       )}
     </div>

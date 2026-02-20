@@ -160,19 +160,40 @@ export async function compare(
   };
 }
 
+export interface SyncControl {
+  isCancelled: () => boolean;
+  isPaused: () => boolean;
+}
+
+async function waitWhilePaused(control: SyncControl): Promise<boolean> {
+  while (control.isPaused() && !control.isCancelled()) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return control.isCancelled();
+}
+
 /** Execute sync based on diffs */
 export async function sync(
   source: SyncPath,
   target: SyncPath,
   diffs: FileDiff[],
   syncMode: SyncMode,
-  onProgress?: (current: number, total: number, path: string) => void
-): Promise<{ done: number; errors: string[] }> {
+  onProgress?: (current: number, total: number, path: string) => void,
+  control?: SyncControl
+): Promise<{ done: number; errors: string[]; cancelled: boolean }> {
   const errors: string[] = [];
   let done = 0;
   const total = diffs.length;
 
   for (const d of diffs) {
+    if (control?.isCancelled()) {
+      return { done, errors, cancelled: true };
+    }
+    if (control?.isPaused()) {
+      const wasCancelled = await waitWhilePaused(control);
+      if (wasCancelled) return { done, errors, cancelled: true };
+    }
+
     try {
       const srcNewer =
         !d.sourceModified ||
@@ -202,7 +223,7 @@ export async function sync(
     onProgress?.(done, total, d.path);
   }
 
-  return { done, errors };
+  return { done, errors, cancelled: false };
 }
 
 async function copyFile(

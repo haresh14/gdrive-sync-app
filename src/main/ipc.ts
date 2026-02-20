@@ -11,6 +11,14 @@ import * as drive from './services/google-drive';
 import * as syncEngine from './services/sync-engine';
 import type { SyncConfig } from '../shared/types';
 
+let syncCancelled = false;
+let syncPaused = false;
+
+const syncControl: syncEngine.SyncControl = {
+  isCancelled: () => syncCancelled,
+  isPaused: () => syncPaused,
+};
+
 export function setupIpcHandlers(): void {
   ipcMain.handle('app:ping', () => 'pong');
 
@@ -78,10 +86,32 @@ export function setupIpcHandlers(): void {
   ipcMain.handle(
     'sync:run',
     async (event, source, target, diffs, syncMode) => {
+      syncCancelled = false;
+      syncPaused = false;
       const win = BrowserWindow.fromWebContents(event.sender);
-      return syncEngine.sync(source, target, diffs, syncMode, (done, total, filePath) => {
-        win?.webContents.send('sync:progress', { done, total, filePath });
-      });
+      return syncEngine.sync(
+        source,
+        target,
+        diffs,
+        syncMode,
+        (done, total, filePath) => {
+          win?.webContents.send('sync:progress', { done, total, filePath });
+        },
+        syncControl
+      );
     }
   );
+
+  ipcMain.handle('sync:cancel', () => {
+    syncCancelled = true;
+    syncPaused = false;
+  });
+
+  ipcMain.handle('sync:pause', () => {
+    syncPaused = true;
+  });
+
+  ipcMain.handle('sync:resume', () => {
+    syncPaused = false;
+  });
 }

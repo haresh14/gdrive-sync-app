@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sync:compare', source, target, syncMode),
     run: (source: object, target: object, diffs: object[], syncMode: string) =>
       ipcRenderer.invoke('sync:run', source, target, diffs, syncMode),
+    cancel: () => ipcRenderer.invoke('sync:cancel'),
+    pause: () => ipcRenderer.invoke('sync:pause'),
+    resume: () => ipcRenderer.invoke('sync:resume'),
     onProgress: (cb: (data: { done: number; total: number; filePath: string }) => void) => {
       const sub = (_: unknown, data: { done: number; total: number; filePath: string }) => cb(data);
       ipcRenderer.on('sync:progress', sub);
