@@ -11,7 +11,8 @@ interface ToolbarProps {
   syncMode: SyncMode;
   onSyncModeChange: (m: SyncMode) => void;
   onNew: () => void;
-  onCompare: () => void;
+  onAnalyze: () => void;
+  analyzing?: boolean;
   onSync: () => void;
   onSave: () => void;
   onLoad: () => void;
@@ -22,7 +23,8 @@ export default function Toolbar({
   syncMode,
   onSyncModeChange,
   onNew,
-  onCompare,
+  onAnalyze,
+  analyzing = false,
   onSync,
   onSave,
   onLoad,
@@ -30,11 +32,12 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <header className="h-14 flex items-center px-4 bg-[#f5f5f7] dark:bg-zinc-800/95 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-      {/* Left: New Sync, Compare */}
+      {/* Left: New Sync, Analyze */}
       <div className="flex items-center gap-3">
         <button
           onClick={onNew}
-          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm"
+          disabled={analyzing}
+          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm disabled:opacity-50 disabled:pointer-events-none"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -42,13 +45,14 @@ export default function Toolbar({
           New Sync
         </button>
         <button
-          onClick={onCompare}
-          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm"
+          onClick={onAnalyze}
+          disabled={analyzing}
+          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-sm disabled:opacity-50 disabled:pointer-events-none"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          Compare
+          {analyzing ? 'Analyzing…' : 'Analyze'}
         </button>
         <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
           <input type="checkbox" defaultChecked className="rounded" />
@@ -60,7 +64,9 @@ export default function Toolbar({
       <div className="flex-1 flex justify-center">
         <button
           onClick={onSync}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-sm"
+          disabled={analyzing}
+          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-sm disabled:opacity-50 disabled:pointer-events-none"
+          title={analyzing ? 'Wait for analysis to finish' : undefined}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

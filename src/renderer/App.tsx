@@ -29,6 +29,7 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [showAccounts, setShowAccounts] = useState(false);
 
+  const [analyzing, setAnalyzing] = useState(false);
   const [compareResult, setCompareResult] = useState<{
     pairResults: Array<{ source: SyncPath; target: SyncPath; diffs: FileDiff[] }>;
     allDiffs: FileDiff[];
@@ -85,7 +86,7 @@ export default function App() {
     });
   };
 
-  const handleCompare = async (): Promise<boolean> => {
+  const handleAnalyze = async (): Promise<boolean> => {
     const pairs = config.folderPairs.length ? config.folderPairs : [];
     const validPairs = pairs.filter(
       (p) =>
@@ -96,7 +97,8 @@ export default function App() {
       setStatus('Add at least one folder pair with source and target');
       return false;
     }
-    setStatus('Comparing...');
+    setAnalyzing(true);
+    setStatus('Analyzing folders… determining which files need to be synced or deleted.');
     try {
       const pairResults: Array<{ source: SyncPath; target: SyncPath; diffs: FileDiff[] }> = [];
       for (const pair of validPairs) {
@@ -118,20 +120,26 @@ export default function App() {
           }
         });
         setCompareResult({ pairResults, allDiffs });
-        setStatus(`Found ${allDiffs.length} differences across ${pairResults.length} pair(s)`);
+        const toSync = allDiffs.filter((d) => d.action === 'create' || d.action === 'update').length;
+        const toDelete = allDiffs.filter((d) => d.action === 'delete').length;
+        setStatus(`Analysis complete. ${toSync} file(s) to sync, ${toDelete} to delete. Review the list and click Synchronize to start.`);
         return true;
       }
+      setCompareResult(null);
+      setStatus('All files are in sync. Nothing to sync or delete.');
       return false;
     } catch (e) {
-      setStatus(`Compare failed: ${(e as Error).message}`);
+      setStatus(`Analysis failed: ${(e as Error).message}`);
       return false;
+    } finally {
+      setAnalyzing(false);
     }
   };
 
   const handleSyncClick = async () => {
     if (!compareResult) {
-      const ok = await handleCompare();
-      if (ok) setShowSyncConfirm(true);
+      const hasDiffs = await handleAnalyze();
+      if (hasDiffs) setShowSyncConfirm(true);
       return;
     }
     setShowSyncConfirm(true);
@@ -233,7 +241,8 @@ export default function App() {
         syncMode={config.syncMode}
         onSyncModeChange={(syncMode) => setConfig((c) => ({ ...c, syncMode }))}
         onNew={handleNewSync}
-        onCompare={handleCompare}
+        onAnalyze={handleAnalyze}
+        analyzing={analyzing}
         onSync={handleSyncClick}
         onSave={async () => {
           try {
@@ -272,20 +281,39 @@ export default function App() {
           onRemoveAt={handleRemovePairAt}
           onUpdatePair={handleUpdatePair}
         />
-        <div className="flex-1 flex min-h-0 border-t border-zinc-200 bg-white overflow-hidden">
-          <div className="flex-1 min-w-0 flex flex-col min-h-0 border-r border-zinc-200">
-            <FileTreePane
-              diffs={compareResult?.allDiffs.filter((d) => d.action !== 'delete') ?? []}
-              side="left"
-              emptyMessage="Select folders and click Compare"
-            />
-          </div>
-          <div className="flex-1 min-w-0 flex flex-col min-h-0">
-            <FileTreePane
-              diffs={compareResult?.allDiffs ?? []}
-              side="right"
-              emptyMessage="Select folders and click Compare"
-            />
+        <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-200 bg-white overflow-hidden relative">
+          {analyzing && (
+            <div className="absolute inset-0 bg-white/90 dark:bg-zinc-900/90 flex items-center justify-center z-10">
+              <div className="flex flex-col items-center gap-3 text-zinc-600 dark:text-zinc-400">
+                <svg className="w-10 h-10 animate-spin text-emerald-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-sm font-medium">Analyzing folders…</span>
+                <span className="text-xs">Checking which files are already synced and what needs to be copied or deleted.</span>
+              </div>
+            </div>
+          )}
+          {compareResult && !analyzing && (
+            <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-600 dark:text-zinc-400 shrink-0">
+              Files to sync or delete. Review the list below, then click <strong>Synchronize</strong> and <strong>Start</strong> to begin.
+            </div>
+          )}
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            <div className="flex-1 min-w-0 flex flex-col min-h-0 border-r border-zinc-200">
+              <FileTreePane
+                diffs={compareResult?.allDiffs.filter((d) => d.action !== 'delete') ?? []}
+                side="left"
+                emptyMessage="Click Analyze to see which files will be synced"
+              />
+            </div>
+            <div className="flex-1 min-w-0 flex flex-col min-h-0">
+              <FileTreePane
+                diffs={compareResult?.allDiffs ?? []}
+                side="right"
+                emptyMessage="Click Analyze to see which files will be synced or deleted"
+              />
+            </div>
           </div>
         </div>
       </div>

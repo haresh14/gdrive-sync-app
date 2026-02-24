@@ -155,21 +155,24 @@ export default function SyncConfirmModal({
           ) : (
             <>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                Start synchronization now?
+                Start synchronization?
               </h2>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                No files have been changed yet. Review the summary below and click Start to begin the sync.
+              </p>
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Variant:</span>
+                  <span className="text-zinc-500">Mode:</span>
                   <span className="font-medium text-zinc-900 dark:text-zinc-200">{SYNC_MODE_LABELS[syncMode]}</span>
                 </div>
                 <div className="flex items-center gap-4 py-2 border-t border-zinc-200 dark:border-zinc-700">
                   <div className="flex items-center gap-2">
                     <span className="text-emerald-500">+</span>
-                    <span className="text-zinc-700 dark:text-zinc-300">{addCount}</span>
+                    <span className="text-zinc-700 dark:text-zinc-300">{addCount} to sync</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-red-500">−</span>
-                    <span className="text-zinc-700 dark:text-zinc-300">{deleteCount}</span>
+                    <span className="text-zinc-700 dark:text-zinc-300">{deleteCount} to delete</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-zinc-500">{sizeStr}</span>
@@ -189,7 +192,7 @@ export default function SyncConfirmModal({
                   disabled={syncing}
                   className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium text-sm"
                 >
-                  Start
+                  Start sync
                 </button>
               </div>
             </>

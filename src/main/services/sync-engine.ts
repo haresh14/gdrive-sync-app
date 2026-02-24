@@ -7,15 +7,33 @@ import * as path from 'path';
 import type { SyncPath, SyncMode, FileDiff } from '../../shared/types';
 import * as drive from './google-drive';
 
+/** Normalize path for consistent comparison (always forward slashes) */
+function normalizeRelPath(rel: string): string {
+  return rel.replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+/** Canonical key for case-insensitive path matching (e.g. Windows vs Drive) */
+function canonicalPath(rel: string): string {
+  return normalizeRelPath(rel).toLowerCase();
+}
+
 export interface CompareResult {
   diffs: FileDiff[];
   sourceCount: number;
   targetCount: number;
 }
 
-/** Recursively list local files with relative paths */
-async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, { size: number; mtime: string; isFolder?: boolean }>> {
-  const result = new Map<string, { size: number; mtime: string; isFolder?: boolean }>();
+interface FileMeta {
+  size: number;
+  mtime: string;
+  id?: string;
+  isFolder?: boolean;
+  originalPath: string;
+}
+
+/** Recursively list local files with relative paths (keys = canonical for comparison) */
+async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, FileMeta>> {
+  const result = new Map<string, FileMeta>();
   let names: string[];
   try {
     names = await fs.readdir(dirPath);
@@ -24,7 +42,8 @@ async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, {
   }
 
   for (const name of names) {
-    const rel = base ? `${base}/${name}` : name;
+    const rel = normalizeRelPath(base ? `${base}/${name}` : name);
+    const key = canonicalPath(rel);
     const full = path.join(dirPath, name);
 
     let stat: import('fs').Stats;
@@ -34,46 +53,45 @@ async function listLocalFiles(dirPath: string, base = ''): Promise<Map<string, {
       continue;
     }
     if (stat.isDirectory()) {
-      result.set(rel, { size: 0, mtime: stat.mtime.toISOString(), isFolder: true });
+      result.set(key, { size: 0, mtime: stat.mtime.toISOString(), isFolder: true, originalPath: rel });
       const sub = await listLocalFiles(full, rel);
-      for (const [p, meta] of sub) result.set(p, meta);
+      for (const [k, meta] of sub) result.set(k, meta);
     } else {
-      result.set(rel, {
+      result.set(key, {
         size: stat.size,
         mtime: stat.mtime.toISOString(),
+        originalPath: rel,
       });
     }
   }
   return result;
 }
 
-/** Recursively list Drive files */
+/** Recursively list Drive files (keys = canonical for comparison; propagates API errors) */
 async function listDriveFiles(
   accountId: string,
   folderId: string,
   base = ''
-): Promise<Map<string, { size: number; mtime: string; id: string; isFolder?: boolean }>> {
-  const result = new Map<string, { size: number; mtime: string; id: string; isFolder?: boolean }>();
-  let files: { id: string; name: string; mimeType: string; size?: number; modifiedTime?: string }[];
-  try {
-    files = await drive.listFiles(accountId, folderId);
-  } catch {
-    return result;
-  }
+): Promise<Map<string, FileMeta>> {
+  const result = new Map<string, FileMeta>();
+  const effectiveFolderId = folderId || 'root';
+  const files = await drive.listFiles(accountId, effectiveFolderId);
 
   const folderMime = 'application/vnd.google-apps.folder';
   for (const f of files) {
-    const rel = base ? `${base}/${f.name}` : f.name;
+    const rel = normalizeRelPath(base ? `${base}/${f.name}` : f.name);
+    const key = canonicalPath(rel);
 
     if (f.mimeType === folderMime) {
-      result.set(rel, { size: 0, mtime: f.modifiedTime ?? '', id: f.id, isFolder: true });
+      result.set(key, { size: 0, mtime: f.modifiedTime ?? '', id: f.id, isFolder: true, originalPath: rel });
       const sub = await listDriveFiles(accountId, f.id, rel);
-      for (const [p, meta] of sub) result.set(p, meta);
+      for (const [k, meta] of sub) result.set(k, meta);
     } else {
-      result.set(rel, {
+      result.set(key, {
         size: f.size ?? 0,
         mtime: f.modifiedTime ?? '',
         id: f.id,
+        originalPath: rel,
       });
     }
   }
@@ -82,7 +100,7 @@ async function listDriveFiles(
 
 /** Get file listing for a path */
 async function getFileMap(p: SyncPath): Promise<{
-  files: Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>;
+  files: Map<string, FileMeta>;
   type: 'local' | 'drive';
   accountId?: string;
   folderId?: string;
@@ -90,18 +108,15 @@ async function getFileMap(p: SyncPath): Promise<{
 }> {
   if (p.type === 'local') {
     const files = await listLocalFiles(p.path);
-    const map = new Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>();
-    for (const [k, v] of files) map.set(k, v);
-    return { files: map, type: 'local', basePath: p.path };
+    return { files, type: 'local', basePath: p.path };
   } else {
-    const files = await listDriveFiles(p.accountId, p.folderId);
-    const map = new Map<string, { size: number; mtime: string; id?: string; isFolder?: boolean }>();
-    for (const [k, v] of files) map.set(k, { ...v, id: v.id });
+    const folderId = (p as { folderId?: string }).folderId ?? 'root';
+    const files = await listDriveFiles(p.accountId, folderId);
     return {
-      files: map,
+      files,
       type: 'drive',
       accountId: p.accountId,
-      folderId: p.folderId,
+      folderId,
     };
   }
 }
@@ -115,43 +130,41 @@ export async function compare(
   const [src, tgt] = await Promise.all([getFileMap(source), getFileMap(target)]);
 
   const diffs: FileDiff[] = [];
-  const allPaths = new Set([
-    ...src.files.keys(),
-    ...tgt.files.keys(),
-  ]);
+  const allPaths = new Set<string>();
+  for (const k of src.files.keys()) allPaths.add(k);
+  for (const k of tgt.files.keys()) allPaths.add(k);
 
-  for (const rel of allPaths) {
-    const s = src.files.get(rel);
-    const t = tgt.files.get(rel);
+  for (const key of allPaths) {
+    const s = src.files.get(key);
+    const t = tgt.files.get(key);
+    const pathForDiff = (s || t)!.originalPath;
 
     if (!s && t) {
-      // only on target
-      if (syncMode === 'mirror') diffs.push({ path: rel, action: 'delete', isFolder: t.isFolder });
+      if (syncMode === 'mirror') diffs.push({ path: pathForDiff, action: 'delete', isFolder: t.isFolder });
       else if (syncMode === 'one-way-rl' && !t.isFolder)
-        diffs.push({ path: rel, action: 'create', targetSize: t.size, targetModified: t.mtime });
+        diffs.push({ path: pathForDiff, action: 'create', targetSize: t.size, targetModified: t.mtime });
     } else if (s && !t) {
-      // only on source (don't create folder entries, they're created implicitly)
       if (syncMode !== 'one-way-rl' && !s.isFolder)
-        diffs.push({ path: rel, action: 'create', sourceSize: s.size, sourceModified: s.mtime });
+        diffs.push({ path: pathForDiff, action: 'create', sourceSize: s.size, sourceModified: s.mtime });
     } else if (s && t) {
-      // both - check if different (skip folders for update comparison)
-      if (!s.isFolder && !t.isFolder && (s.size !== t.size || s.mtime !== t.mtime)) {
+      // Only re-sync when size differs (e.g. partial upload); skip if size matches (already synced)
+      const srcSize = Number(s.size) || 0;
+      const tgtSize = Number(t.size) || 0;
+      if (!s.isFolder && !t.isFolder && srcSize !== tgtSize) {
         const srcNewer = !s.mtime || !t.mtime || s.mtime > t.mtime;
-        const sizeMismatch = s.size !== t.size;
-        // Always re-sync when sizes differ (e.g. partial upload) so copy completes
         if (syncMode === 'two-way') {
           diffs.push({
-            path: rel,
-            action: srcNewer ? 'update' : 'update', // conflict: pick source for now
+            path: pathForDiff,
+            action: 'update',
             sourceSize: s.size,
             targetSize: t.size,
             sourceModified: s.mtime,
             targetModified: t.mtime,
           });
         } else if (syncMode === 'mirror' || syncMode === 'one-way-lr') {
-          if (srcNewer || sizeMismatch) diffs.push({ path: rel, action: 'update', sourceSize: s.size, sourceModified: s.mtime });
+          diffs.push({ path: pathForDiff, action: 'update', sourceSize: s.size, sourceModified: s.mtime });
         } else if (syncMode === 'one-way-rl') {
-          if (!srcNewer || sizeMismatch) diffs.push({ path: rel, action: 'update', targetSize: t.size, targetModified: t.mtime });
+          diffs.push({ path: pathForDiff, action: 'update', targetSize: t.size, targetModified: t.mtime });
         }
       }
     }
@@ -275,21 +288,45 @@ async function copyFile(
   } else if (from.type === 'local' && to.type === 'drive') {
     const src = path.join(from.path, relPath);
     const content = await fs.readFile(src);
-    const parentId = await ensureParentFolder(to.accountId, to.folderId, path.dirname(relPath));
-    await drive.uploadFile(to.accountId, parentId, relPath, content);
+    const stat = await fs.stat(src);
+    const modifiedTime = stat.mtime.toISOString();
+
+    const existingId = await getDriveFileId(to.accountId, to.folderId, relPath);
+    if (existingId) {
+      await drive.updateFile(to.accountId, existingId, content, { modifiedTime });
+    } else {
+      const parentId = await ensureParentFolder(to.accountId, to.folderId, path.dirname(relPath));
+      await drive.uploadFile(to.accountId, parentId, relPath, content, { modifiedTime });
+    }
   } else if (from.type === 'drive' && to.type === 'local') {
     const fileId = await getDriveFileId(from.accountId, from.folderId, relPath);
     if (!fileId) throw new Error(`File not found: ${relPath}`);
-    const content = await drive.downloadFile(from.accountId, fileId);
+    const [content, meta] = await Promise.all([
+      drive.downloadFile(from.accountId, fileId),
+      drive.getFile(from.accountId, fileId),
+    ]);
     const dest = path.join(to.path, relPath);
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.writeFile(dest, content);
+    if (meta?.modifiedTime) {
+      const mtime = new Date(meta.modifiedTime).getTime() / 1000;
+      await fs.utimes(dest, mtime, mtime);
+    }
   } else if (from.type === 'drive' && to.type === 'drive') {
     const fileId = await getDriveFileId(from.accountId, from.folderId, relPath);
     if (!fileId) throw new Error(`File not found: ${relPath}`);
-    const content = await drive.downloadFile(from.accountId, fileId);
-    const parentId = await ensureParentFolder(to.accountId, to.folderId, path.dirname(relPath));
-    await drive.uploadFile(to.accountId, parentId, relPath, content);
+    const [content, meta] = await Promise.all([
+      drive.downloadFile(from.accountId, fileId),
+      drive.getFile(from.accountId, fileId),
+    ]);
+    const modifiedTime = meta?.modifiedTime;
+    const existingId = await getDriveFileId(to.accountId, to.folderId, relPath);
+    if (existingId) {
+      await drive.updateFile(to.accountId, existingId, content, modifiedTime ? { modifiedTime } : {});
+    } else {
+      const parentId = await ensureParentFolder(to.accountId, to.folderId, path.dirname(relPath));
+      await drive.uploadFile(to.accountId, parentId, relPath, content, modifiedTime ? { modifiedTime } : {});
+    }
   }
 }
 
