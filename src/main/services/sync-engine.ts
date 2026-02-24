@@ -137,6 +137,8 @@ export async function compare(
       // both - check if different (skip folders for update comparison)
       if (!s.isFolder && !t.isFolder && (s.size !== t.size || s.mtime !== t.mtime)) {
         const srcNewer = !s.mtime || !t.mtime || s.mtime > t.mtime;
+        const sizeMismatch = s.size !== t.size;
+        // Always re-sync when sizes differ (e.g. partial upload) so copy completes
         if (syncMode === 'two-way') {
           diffs.push({
             path: rel,
@@ -147,9 +149,9 @@ export async function compare(
             targetModified: t.mtime,
           });
         } else if (syncMode === 'mirror' || syncMode === 'one-way-lr') {
-          if (srcNewer) diffs.push({ path: rel, action: 'update', sourceSize: s.size, sourceModified: s.mtime });
-        } else if (syncMode === 'one-way-rl' && !srcNewer) {
-          diffs.push({ path: rel, action: 'update', targetSize: t.size, targetModified: t.mtime });
+          if (srcNewer || sizeMismatch) diffs.push({ path: rel, action: 'update', sourceSize: s.size, sourceModified: s.mtime });
+        } else if (syncMode === 'one-way-rl') {
+          if (!srcNewer || sizeMismatch) diffs.push({ path: rel, action: 'update', targetSize: t.size, targetModified: t.mtime });
         }
       }
     }
