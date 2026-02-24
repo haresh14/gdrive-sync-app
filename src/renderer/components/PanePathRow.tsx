@@ -29,7 +29,7 @@ export default function PanePathRow({ value, onChange, accounts, compact = false
 
   return (
     <div className={`flex flex-col ${compact ? 'gap-0.5' : 'gap-1'}`}>
-      <span className={`text-zinc-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>Drag &amp; drop</span>
+      {/* <span className={`text-zinc-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>Drag &amp; drop</span> */}
       <div className="flex gap-1 items-center">
         <select
           value={value.type}
