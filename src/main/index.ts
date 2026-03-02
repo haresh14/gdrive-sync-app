@@ -1,6 +1,15 @@
-import 'dotenv/config';
 import { app, BrowserWindow, nativeTheme } from 'electron';
 import path from 'path';
+import { config } from 'dotenv';
+
+// Load .env - when packaged, try: bundled Resources, then userData (overrides)
+if (app.isPackaged) {
+  config({ path: path.join(process.resourcesPath, '.env') });
+  config({ path: path.join(app.getPath('userData'), '.env') });
+} else {
+  config({ path: path.resolve(process.cwd(), '.env') });
+}
+
 import { setupIpcHandlers } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;

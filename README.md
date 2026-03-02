@@ -26,12 +26,16 @@ npm install
 1. Create a project at [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable **Google Drive API**
 3. Create OAuth 2.0 credentials → **Desktop app** (no redirect URI config needed)
-4. Add to `.env`:
+4. Add credentials to `.env`:
    ```
    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    GOOGLE_CLIENT_SECRET=your-client-secret
    ```
    Get both from your OAuth client credentials.
+
+   **Packaged app (Mac/Linux):** After `npm run dist:mac` or `dist:linux`, create `.env` in the app data folder:
+   - **Mac:** `~/Library/Application Support/GDrive Sync/.env`
+   - **Linux:** `~/.config/gdrive-sync-app/.env`
 
 ## Development
 

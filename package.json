@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:mac": "test -f .env || cp .env.example .env; npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
@@ -56,6 +56,13 @@
       "target": [
         "dmg",
         "zip"
+      ],
+      "extraResources": [
+        {
+          "from": ".env",
+          "to": ".env",
+          "filter": ["**/*"]
+        }
       ]
     },
     "linux": {

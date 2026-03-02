@@ -4,7 +4,8 @@
  */
 
 import * as http from 'http';
-import { shell } from 'electron';
+import * as path from 'path';
+import { app, shell } from 'electron';
 import Store from 'electron-store';
 import { GoogleAccount } from '../../shared/types';
 
@@ -90,10 +91,12 @@ export async function addAccount(
   accountId: string
 ): Promise<AddAccountResult> {
   if (!CLIENT_SECRET) {
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), '.env')
+      : path.join(process.cwd(), '.env');
     return {
       success: false,
-      error:
-        'GOOGLE_CLIENT_SECRET not set. Add it to .env (get it from your OAuth client in Google Cloud Console).',
+      error: `GOOGLE_CLIENT_SECRET not set. Add your OAuth credentials to .env:\n${envPath}\n\nGet them from your OAuth client in Google Cloud Console.`,
     };
   }
 
